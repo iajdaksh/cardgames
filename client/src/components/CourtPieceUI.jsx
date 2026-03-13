@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { suitSymbol } from './CardTable';
+import { suitSym } from './CardTable';
 
 const SUITS = ['spades', 'hearts', 'diamonds', 'clubs'];
 const SUIT_COLORS = { spades: '#1a1a2e', hearts: '#c0392b', diamonds: '#c0392b', clubs: '#1a1a2e' };
@@ -42,7 +42,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
                   style={{ color: SUIT_COLORS[suit] }}
                   onClick={() => setSelectedSuit(suit)}
                 >
-                  {suitSymbol(suit)}
+                  {suitSym(suit)}
                   <span>{suit}</span>
                 </button>
               ))}
@@ -57,7 +57,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
                 }
               }}
             >
-              Confirm: {selectedSuit ? `${suitSymbol(selectedSuit)} ${selectedSuit}` : 'Select suit first'}
+              Confirm: {selectedSuit ? `${suitSym(selectedSuit)} ${selectedSuit}` : 'Select suit first'}
             </button>
           </div>
         )}
@@ -70,7 +70,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
                 key={card.id}
                 className={`mini-card ${card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'}`}
               >
-                {card.rank}{suitSymbol(card.suit)}
+                {card.rank}{suitSym(card.suit)}
               </span>
             ))}
           </div>
@@ -91,7 +91,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
       <div className="game-ui courtpiece-ui">
         <div className="phase-header">
           <h3>⬆️ Raise Round</h3>
-          <p>Trump: <strong style={{ color: SUIT_COLORS[trumpSuit] }}>{suitSymbol(trumpSuit)} {trumpSuit}</strong></p>
+          <p>Trump: <strong style={{ color: SUIT_COLORS[trumpSuit] }}>{suitSym(trumpSuit)} {trumpSuit}</strong></p>
         </div>
 
         <div className="raise-status">
@@ -142,7 +142,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
                 key={card.id}
                 className={`mini-card ${card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'}`}
               >
-                {card.rank}{suitSymbol(card.suit)}
+                {card.rank}{suitSym(card.suit)}
               </span>
             ))}
           </div>
@@ -160,7 +160,7 @@ export default function CourtPieceUI({ gameState, myCards, player, myPosition, o
       <div className="game-ui courtpiece-ui playing">
         <div className="trump-info">
           <span style={{ color: SUIT_COLORS[trumpSuit] }}>
-            {suitSymbol(trumpSuit)} {trumpSuit?.toUpperCase()}
+            {suitSym(trumpSuit)} {trumpSuit?.toUpperCase()}
           </span>
           <span className="target-info">Target: {targetTricks} tricks</span>
         </div>

@@ -14,12 +14,12 @@ const { PlayerProfileManager, AVATARS, AVATAR_BG_COLORS } = require('./utils/pla
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'], credentials: true } });
+const io = new Server(server, { cors: { origin: true, methods: ['GET', 'POST'], credentials: true } });
 
-app.use(cors({ origin: '*', credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.static('../client/build'));
+app.use(express.static('public'));
 
 const roomManager = new RoomManager();
 const timerManager = new TurnTimerManager(io);

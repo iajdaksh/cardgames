@@ -1,16 +1,21 @@
 import { io } from 'socket.io-client';
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:3001';
+const getServerUrl = () => {
+  if (window.location.hostname.includes('app.github.dev')) {
+    return window.location.origin.replace('-3000.', '-3001.');
+  }
+  return 'http://localhost:3001';
+};
 
 let socket = null;
 
 export function getSocket() {
   if (!socket) {
-    socket = io(SERVER_URL, {
+    socket = io(getServerUrl(), {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
-      withCredentials: true
+      withCredentials: false
     });
   }
   return socket;
