@@ -1,0 +1,15 @@
+{
+  "name": "card-games",
+  "version": "1.0.0",
+  "description": "Multiplayer Indian Card Games – Mendicot & Court Piece",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm start",
+    "start:server": "cd server && npm start",
+    "build:client": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.1"
+  }
+}
