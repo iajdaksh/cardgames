@@ -1,137 +1,132 @@
 const {
   createDeck, shuffleDeck, dealCards, dealRemainingCards,
-  getTrickWinner
+  getTrickWinner, cardValue
 } = require('./gameEngine');
-
-// ─── Court Piece Game ────────────────────────────────────────────────────────
-// Rules:
-// - 4 players, 2 teams (0&2=TeamA, 1&3=TeamB)
-// - Deal 5 cards to each player first
-// - Player right of dealer MUST call trump (no pass)
-// - Raise round: teams can raise trick target (7→8→9→...→13), alternating
-// - After raise settled → deal remaining 4+4 cards
-// - Trump caller's team leads first
-// - Normal trick collection (no consecutive rule)
-// - Win by reaching target tricks
-// - Loser deals next
 
 class CourtPieceGame {
   constructor(players) {
-    this.players = players;       // [{ id, name, team, position }]
+    this.players = players;
     this.hands = {};
     this.trumpSuit = null;
+    this.targetTricks = 7;
+    this.currentTurn = null;
     this.currentTrick = [];
     this.capturedTricks = { 0: 0, 1: 0 };
-    this.currentTurn = null;
-    this.currentLeader = null;
-    this.dealerIndex = 0;
-    this.trumpCallerIndex = null; // position of trump caller (right of dealer)
-    this.trumpCallerTeam = null;
-    this.dealerTeam = null;
-    this.phase = 'trump_call';    // trump_call | raise | dealing_rest | playing | finished
-    this.targetTricks = 7;        // starts at 7 for trump caller team
-    this.raiseCount = 0;
-    this.lastRaiseTeam = null;    // which team last raised
-    this.scores = { 0: 0, 1: 0 };
+    this.phase = 'dealing';
     this.remainingDeck = [];
-    this.totalTricks = 0;
+    this.dealerIndex = 0;
+    this.trumpCallerIndex = null;  // who called trump first
+    this.lastTrumpTeam = null;     // team who last chose trump
+    this.lastTrumpPlayer = null;   // player who last chose trump
+    this.raiseCount = 0;
+    this.lastRaiseTeam = null;
+    this.passCount = 0;            // consecutive passes
+    this.scores = { 0: 0, 1: 0 };
     this.log = [];
   }
 
   start() {
     const deck = shuffleDeck(createDeck());
     const { hands, remainingDeck } = dealCards(deck, 4, 5, []);
-
     this.remainingDeck = remainingDeck;
-    this.players.forEach((p, i) => {
-      this.hands[p.id] = hands[i];
-    });
+    this.players.forEach((p, i) => { this.hands[p.id] = hands[i]; });
 
-    // Trump caller = right of dealer
+    // Player next to dealer calls trump
     this.trumpCallerIndex = (this.dealerIndex + 1) % 4;
-    const trumpCaller = this.players[this.trumpCallerIndex];
-    this.trumpCallerTeam = trumpCaller.team;
-    this.dealerTeam = this.players[this.dealerIndex].team;
-
-    this.currentTurn = trumpCaller.id;
+    this.currentTurn = this.players[this.trumpCallerIndex].id;
     this.phase = 'trump_call';
-
-    this._log(`5 cards dealt. ${trumpCaller.name} must call trump.`);
+    this._log(`Game started. ${this.players[this.trumpCallerIndex].name} calls trump.`);
   }
 
   handleAction(playerId, action, data) {
-    switch (action) {
-      case 'call_trump':
-        return this._callTrump(playerId, data.suit);
-      case 'raise':
-        return this._raise(playerId);
-      case 'pass_raise':
-        return this._passRaise(playerId);
-      case 'play_card':
-        return this._playCard(playerId, data.cardId);
-      default:
-        return null;
-    }
+    if (action === 'call_trump') return this._callTrump(playerId, data.suit);
+    if (action === 'raise') return this._raise(playerId, data.suit);
+    if (action === 'pass_raise') return this._passRaise(playerId);
+    if (action === 'play_card') return this._playCard(playerId, data.cardId);
+    return null;
   }
 
+  // ── Trump Call (first call by player next to dealer) ──────────────────────
   _callTrump(playerId, suit) {
+    if (this.currentTurn !== playerId) return null;
     if (this.phase !== 'trump_call') return null;
-    const caller = this.players[this.trumpCallerIndex];
-    if (caller.id !== playerId) return null;
-    if (!['spades', 'hearts', 'diamonds', 'clubs'].includes(suit)) return null;
 
     this.trumpSuit = suit;
-    this.phase = 'raise';
-    this.lastRaiseTeam = this.trumpCallerTeam; // trump caller just "called", dealer team raises first
+    this.lastTrumpTeam = this.getPlayerById(playerId).team;
+    this.lastTrumpPlayer = playerId;
+    this.targetTricks = 7;
+    this.raiseCount = 0;
+    this.passCount = 0;
 
-    this._log(`Trump called: ${suit} by ${caller.name}`);
+    this._log(`Trump called: ${suit} by ${this.getPlayerById(playerId).name}`);
+
+    // Move to raise phase — opponent team goes first
+    const callerTeam = this.getPlayerById(playerId).team;
+    const opponentTeam = callerTeam === 0 ? 1 : 0;
+    this.lastRaiseTeam = callerTeam; // caller just "raised" (called trump)
+    
+    // Find opponent team player to raise/pass
+    const opponentPlayer = this.players.find(p => p.team === opponentTeam);
+    this.currentTurn = opponentPlayer.id;
+    this.phase = 'raise';
+
     return { state: this.getPublicState() };
   }
 
-  _raise(playerId) {
+  // ── Raise (change/keep trump, target +1) ──────────────────────────────────
+  _raise(playerId, newSuit) {
     if (this.phase !== 'raise') return null;
-    const player = this.getPlayerById(playerId);
-    if (!player) return null;
-
-    // Dealer team raises first, then alternates
-    // Current raiser must be from opposite team of lastRaiseTeam
-    const expectedTeam = this.lastRaiseTeam === this.trumpCallerTeam
-      ? this.dealerTeam
-      : this.trumpCallerTeam;
-
-    if (player.team !== expectedTeam) return null;
+    if (this.currentTurn !== playerId) return null;
     if (this.targetTricks >= 13) return null;
 
+    const player = this.getPlayerById(playerId);
+    
+    // Update trump (can be same or new suit)
+    this.trumpSuit = newSuit || this.trumpSuit;
     this.targetTricks++;
     this.raiseCount++;
     this.lastRaiseTeam = player.team;
+    this.lastTrumpTeam = player.team;
+    this.lastTrumpPlayer = playerId;
+    this.passCount = 0;
 
-    this._log(`${player.name} raised! Target now: ${this.targetTricks} tricks`);
+    this._log(`${player.name} raised to ${this.targetTricks} tricks, trump: ${this.trumpSuit}`);
 
-    if (this.targetTricks >= 13) {
-      return this._startPlaying();
-    }
+    // Switch to other team
+    const otherTeam = player.team === 0 ? 1 : 0;
+    const otherPlayer = this.players.find(p => p.team === otherTeam && p.id !== this.lastTrumpPlayer) 
+      || this.players.find(p => p.team === otherTeam);
+    this.currentTurn = otherPlayer.id;
 
     return { state: this.getPublicState() };
   }
 
+  // ── Pass Raise ────────────────────────────────────────────────────────────
   _passRaise(playerId) {
     if (this.phase !== 'raise') return null;
+    if (this.currentTurn !== playerId) return null;
+
     const player = this.getPlayerById(playerId);
-    if (!player) return null;
+    this.passCount++;
+    this._log(`${player.name} passed raise`);
 
-    const expectedTeam = this.lastRaiseTeam === this.trumpCallerTeam
-      ? this.dealerTeam
-      : this.trumpCallerTeam;
+    if (this.passCount >= 2) {
+      // Both teams passed → start game
+      return this._startPlaying();
+    }
 
-    // Both teams must pass (or one passes after other raised) to end raise round
-    // If lastRaiseTeam already raised, other team passes → done
-    this._log(`${player.name} passed raise.`);
-    return this._startPlaying();
+    // Switch to other team
+    const otherTeam = player.team === 0 ? 1 : 0;
+    const otherPlayer = this.players.find(p => p.team === otherTeam);
+    this.currentTurn = otherPlayer.id;
+    this.passCount = this.passCount; // keep counting
+
+    return { state: this.getPublicState() };
   }
 
+  // ── Start Playing ─────────────────────────────────────────────────────────
   _startPlaying() {
-    // Deal remaining 4+4 cards
+    // Deal remaining cards
     let idx = 0;
     const batches = [4, 4];
     for (const batchSize of batches) {
@@ -145,16 +140,14 @@ class CourtPieceGame {
     }
 
     this.phase = 'playing';
+    // Last trump chooser leads first
+    this.currentTurn = this.lastTrumpPlayer;
+    this._log(`Game starts! ${this.getPlayerById(this.lastTrumpPlayer).name} leads. Target: ${this.targetTricks} tricks. Trump: ${this.trumpSuit}`);
 
-    // Trump caller leads first
-    const trumpCaller = this.players[this.trumpCallerIndex];
-    this.currentLeader = trumpCaller.id;
-    this.currentTurn = trumpCaller.id;
-
-    this._log(`Cards dealt (4+4). Game starts! Target: ${this.targetTricks} tricks. ${trumpCaller.name} leads.`);
     return { state: this.getPublicState(), cardsDealt: true };
   }
 
+  // ── Play Card ─────────────────────────────────────────────────────────────
   _playCard(playerId, cardId) {
     if (this.phase !== 'playing') return null;
     if (this.currentTurn !== playerId) return null;
@@ -166,12 +159,13 @@ class CourtPieceGame {
     const card = hand[cardIndex];
     const leadSuit = this.currentTrick.length > 0 ? this.currentTrick[0].card.suit : null;
 
-    // Must follow suit
+    // Validate follow suit
     if (leadSuit) {
       const hasSuit = hand.some(c => c.suit === leadSuit && c.id !== cardId);
       if (hasSuit && card.suit !== leadSuit) return null;
     }
 
+    // Remove card from hand
     hand.splice(cardIndex, 1);
     this.currentTrick.push({ playerId, card });
 
@@ -190,101 +184,91 @@ class CourtPieceGame {
     const winnerTeam = winnerPlayer.team;
 
     this.capturedTricks[winnerTeam]++;
-    this.totalTricks++;
-
-    this._log(`Trick ${this.totalTricks} won by ${winnerPlayer.name} (Team ${winnerTeam === 0 ? 'A' : 'B'})`);
+    this._log(`Trick ${this.capturedTricks[0]+this.capturedTricks[1]} won by ${winnerPlayer.name} (Team ${winnerTeam === 0 ? 'A' : 'B'})`);
 
     this.currentTrick = [];
-    this.currentLeader = winner.playerId;
     this.currentTurn = winner.playerId;
 
-    // Check win condition
-    // The team that raised to current target must reach it
-    // Determine which team needs targetTricks
-    const targetTeam = this.raiseCount % 2 === 0 ? this.trumpCallerTeam : this.dealerTeam;
-    const otherTeam = targetTeam === 0 ? 1 : 0;
-    const tricksLeft = 13 - this.totalTricks;
+    const totalTricks = this.capturedTricks[0] + this.capturedTricks[1];
 
-    // Target team reaches target
-    if (this.capturedTricks[targetTeam] >= this.targetTricks) {
-      return this._gameOver(targetTeam, `Team ${targetTeam === 0 ? 'A' : 'B'} reached ${this.targetTricks} tricks!`);
+    // Check early win — trump team got target
+    const trumpTeam = this.lastTrumpTeam;
+    const otherTeam = trumpTeam === 0 ? 1 : 0;
+
+    if (this.capturedTricks[trumpTeam] >= this.targetTricks) {
+      return this._gameOver(trumpTeam);
     }
 
-    // Other team blocks target (target team can't reach it)
-    const maxPossible = this.capturedTricks[targetTeam] + tricksLeft;
-    if (maxPossible < this.targetTricks) {
-      return this._gameOver(otherTeam, `Team ${otherTeam === 0 ? 'A' : 'B'} blocked! Opponent can't reach ${this.targetTricks} tricks.`);
+    // Check if other team blocked
+    const tricksLeft = 13 - totalTricks;
+    if (this.capturedTricks[otherTeam] > 13 - this.targetTricks) {
+      return this._gameOver(otherTeam);
     }
 
-    // All tricks played
-    if (this.totalTricks === 13) {
-      if (this.capturedTricks[targetTeam] >= this.targetTricks) {
-        return this._gameOver(targetTeam, `Team ${targetTeam === 0 ? 'A' : 'B'} wins!`);
-      } else {
-        return this._gameOver(otherTeam, `Team ${otherTeam === 0 ? 'A' : 'B'} wins by blocking!`);
-      }
+    if (totalTricks >= 13) {
+      // All tricks played
+      const trumpWon = this.capturedTricks[trumpTeam] >= this.targetTricks;
+      return this._gameOver(trumpWon ? trumpTeam : otherTeam);
     }
 
     return { state: this.getPublicState() };
   }
 
-  _gameOver(winnerTeam, reason) {
+  _gameOver(winnerTeam) {
     this.phase = 'finished';
-    this.scores[winnerTeam]++;
     const loserTeam = winnerTeam === 0 ? 1 : 0;
+    const isSuper = this.capturedTricks[winnerTeam] === 13;
 
-    // Check for Court (Kot) - winning all 13 tricks
-    const isKot = this.capturedTricks[winnerTeam] === 13;
+    // Scoring based on target
+    const pts = this.targetTricks === 13 ? 7 : this.targetTricks - 6;
+    this.scores[winnerTeam] += pts;
+
+    const reason = isSuper
+      ? `🏆 SUPER WIN! Team ${winnerTeam === 0 ? 'A' : 'B'} won all 13 tricks!`
+      : `Team ${winnerTeam === 0 ? 'A' : 'B'} won ${this.capturedTricks[winnerTeam]}/${this.targetTricks} tricks`;
+
+    this._log(`Game over! ${reason}`);
 
     return {
       gameOver: true,
       winner: `Team ${winnerTeam === 0 ? 'A' : 'B'}`,
       loserTeam,
-      reason: isKot ? `KOT! ${reason}` : reason,
-      isKot,
+      reason,
       scores: this.scores,
-      capturedTricks: this.capturedTricks,
-      targetTricks: this.targetTricks
+      isKot: isSuper,
+      capturedTricks: this.capturedTricks
     };
   }
 
   _nextTurn() {
-    const currentIdx = this.players.findIndex(p => p.id === this.currentTurn);
-    this.currentTurn = this.players[(currentIdx + 1) % 4].id;
+    const idx = this.players.findIndex(p => p.id === this.currentTurn);
+    this.currentTurn = this.players[(idx + 1) % 4].id;
   }
 
-  getPlayerById(id) {
-    return this.players.find(p => p.id === id);
-  }
-
-  getPlayerCards(playerId) {
-    return this.hands[playerId] || [];
-  }
-
-  getPlayerPosition(playerId) {
-    return this.players.find(p => p.id === playerId)?.position;
-  }
+  getPlayerById(id) { return this.players.find(p => p.id === id); }
+  getPlayerCards(playerId) { return this.hands[playerId] || []; }
+  getPlayerPosition(playerId) { return this.players.find(p => p.id === playerId)?.position; }
 
   getPublicState() {
     return {
       phase: this.phase,
       trumpSuit: this.trumpSuit,
-      currentTurn: this.currentTurn,
-      currentLeader: this.currentLeader,
-      currentTrick: this.currentTrick,
-      capturedTricks: this.capturedTricks,
       targetTricks: this.targetTricks,
       raiseCount: this.raiseCount,
       lastRaiseTeam: this.lastRaiseTeam,
-      trumpCallerTeam: this.trumpCallerTeam,
-      dealerTeam: this.dealerTeam,
+      lastTrumpTeam: this.lastTrumpTeam,
       trumpCallerIndex: this.trumpCallerIndex,
+      currentTurn: this.currentTurn,
+      currentTrick: this.currentTrick,
+      capturedTricks: this.capturedTricks,
       handCounts: Object.fromEntries(
         this.players.map(p => [p.id, this.hands[p.id]?.length || 0])
       ),
-      totalTricks: this.totalTricks,
       scores: this.scores,
-      players: this.players.map(p => ({ id: p.id, name: p.name, team: p.team, position: p.position }))
+      passCount: this.passCount,
+      players: this.players.map(p => ({
+        id: p.id, name: p.name, team: p.team, position: p.position
+      }))
     };
   }
 
