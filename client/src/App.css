@@ -305,3 +305,12 @@ input{font-family:inherit}
 .toast-sub{font-size:.85rem;color:#7a9ab0}
 .toast-kot{background:#FFD700;color:#1a1a2e;font-weight:700;padding:2px 8px;border-radius:4px;font-size:.8rem;margin-top:4px}
 @keyframes slideIn{from{top:-60px;opacity:0}to{top:16px;opacity:1}}
+
+/* ─── Real Card Images ───── */
+.card-img-wrap{position:relative;cursor:pointer;transition:transform .2s;display:inline-block}
+.card-img-wrap.selected{transform:translateY(-20px)}
+.card-img-wrap.playable:hover{transform:translateY(-10px)}
+.card-img-wrap.not-playable{opacity:.6;cursor:not-allowed}
+.card-img{width:72px;height:100px;border-radius:6px;box-shadow:2px 4px 8px rgba(0,0,0,.5);display:block}
+.card-selected-glow{position:absolute;inset:0;border-radius:6px;border:3px solid #FFD700;box-shadow:0 0 12px #FFD700;pointer-events:none}
+.cards-row{display:flex;align-items:flex-end;justify-content:center;padding:10px 0}

@@ -54,7 +54,7 @@ function App() {
     socket.on('room_created', ({ room }) => setRoom(room));
     socket.on('room_update', ({ room }) => setRoom(room));
 
-    socket.on('game_started', ({ gameType }) => setGameType(gameType));
+    socket.on('game_started', ({ gameType }) => { setGameType(gameType); setRoom(p => p ? { ...p, status: 'playing' } : p); });
 
     socket.on('my_cards', ({ cards, myPosition: pos }) => {
       setMyCards(cards);
