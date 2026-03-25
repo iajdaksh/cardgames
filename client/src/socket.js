@@ -1,10 +1,16 @@
 import { io } from 'socket.io-client';
 
 const getServerUrl = () => {
+  if (process.env.REACT_APP_SERVER_URL) {
+    return process.env.REACT_APP_SERVER_URL;
+  }
   if (window.location.hostname.includes('app.github.dev')) {
     return window.location.origin.replace('-3000.', '-3001.');
   }
-  return 'http://localhost:3001';
+  if (window.location.hostname === 'localhost') {
+    return 'http://localhost:3001';
+  }
+  return window.location.origin;
 };
 
 let socket = null;
